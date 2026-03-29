@@ -1,0 +1,48 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: broker
+    restart: always
+    environment:
+      RABBITMQ_ADMIN_USER: ${RABBITMQ_ADMIN_USER}
+      RABBITMQ_ADMIN_HASH: ${RABBITMQ_ADMIN_HASH}
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        sed \
+          -e "s|__RABBITMQ_ADMIN_USER__|$${RABBITMQ_ADMIN_USER}|g" \
+          -e "s|__RABBITMQ_ADMIN_HASH__|$${RABBITMQ_ADMIN_HASH}|g" \
+          /etc/rabbitmq/definitions.template.json > /etc/rabbitmq/definitions.json
+        exec rabbitmq-server
+    ports:
+      - "${RABBITMQ_PORT}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT}:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - rabbitmq_log:/var/log/rabbitmq
+      - ./config/definitions.json:/etc/rabbitmq/definitions.template.json:ro
+      - ./config/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - pingtower_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pingtower-rabbitmq.rule=Host(`${RABBITMQ_HOST}`)"
+      - "traefik.http.routers.pingtower-rabbitmq.entrypoints=websecure"
+      - "traefik.http.routers.pingtower-rabbitmq.tls.certresolver=pingtowerresolver"
+      - "traefik.http.services.pingtower-rabbitmq.loadbalancer.server.port=15672"
+
+
+volumes:
+  rabbitmq_data:
+  rabbitmq_log:
+
+networks:
+  pingtower_network:
+    name: pingtower_network
+    driver: bridge

@@ -1,0 +1,77 @@
+services:
+  loki:
+    image: grafana/loki:3.0.0
+    container_name: loki
+    command: -config.file=/etc/logging/loki/config.yml
+    expose:
+      - "3100"
+    volumes:
+      - ./loki/config.yml:/etc/logging/loki/config.yml
+      - loki_data:/loki
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:3100/ready >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - pingtower_network
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:3.0.0
+    container_name: promtail
+    command: -config.file=/etc/logging/promtail/promtail.yml
+    volumes:
+      - ./promtail/promtail.yml:/etc/logging/promtail/promtail.yml
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      loki:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:9080/ready >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - pingtower_network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.0.0
+    container_name: grafana
+    environment:
+      - GF_SERVER_ROOT_URL=https://${GRAFANA_HOST}
+    expose:
+      - "3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      loki:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:3000/api/health >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - pingtower_network
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pingtower-grafana.rule=Host(`${GRAFANA_HOST}`)"
+      - "traefik.http.routers.pingtower-grafana.entrypoints=websecure"
+      - "traefik.http.routers.pingtower-grafana.tls.certresolver=pingtowerresolver"
+      - "traefik.http.services.pingtower-grafana.loadbalancer.server.port=3000"
+
+volumes:
+  grafana_data:
+  loki_data:
+
+networks:
+  pingtower_network:
+    name: pingtower_network
+    driver: bridge

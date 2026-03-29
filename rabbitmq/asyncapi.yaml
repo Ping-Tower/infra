@@ -1,0 +1,656 @@
+asyncapi: 2.6.0
+info:
+  title: PingTower Event Bus
+  version: 1.0.0
+  description: |
+    AsyncAPI contract for PingTower service-to-service messaging over RabbitMQ.
+
+    ## Exchange/queue topology
+
+    **Work queues** (`emailQueue`, `telegramQueue`):
+    published via the default exchange (routing key = queue name).
+    Single consumer processes each message exactly once.
+
+    **Pub/sub via topic exchange** (`server.target.*`, `server.ping.recorded`,
+    `server.status.changed`): the channel binding describes the exchange only.
+    Each consumer declares its own durable queue and binds it to the exchange
+    with the appropriate routing key, so every consumer receives every message.
+    Queue names are service-specific, not shared across all consumers of an event.
+
+    ## Route map
+
+    - `""` (default exchange), routing key `emailQueue` -> queue `emailQueue`
+    - `""` (default exchange), routing key `telegramQueue` -> queue `telegramQueue`
+    - `serverEventsExchange`, routing key `server.target.added`
+      -> queues `q.ping-service.server-events`, `q.state-elevator.server-events`
+    - `serverEventsExchange`, routing key `server.target.updated`
+      -> queues `q.ping-service.server-events`, `q.state-elevator.server-events`
+    - `serverEventsExchange`, routing key `server.target.deleted`
+      -> queues `q.ping-service.server-events`, `q.state-elevator.server-events`
+    - `pingEventsExchange`, routing key `server.ping.recorded`
+      -> queues `q.metrics-writer.ping-events`, `q.state-elevator.ping-events`
+    - `statusEventsExchange`, routing key `server.status.changed`
+      -> queues `q.api.status-events`, `q.message-node.status-events`
+defaultContentType: application/json
+
+tags:
+  - name: api
+    description: ASP.NET Core API service
+  - name: ping-service
+    description: Go service that performs health checks
+  - name: metrics-writer
+    description: Service that writes ping samples to ClickHouse
+  - name: state-elevator
+    description: Service that aggregates state and stores hot state in Redis
+  - name: message-node
+    description: Notification orchestrator (Python)
+  - name: email-service
+    description: Email sender worker (C#)
+  - name: tg-bot
+    description: Telegram bot worker (Python)
+
+servers:
+  rabbitmq:
+    url: localhost:5672
+    protocol: amqp
+    protocolVersion: "0-9-1"
+    description: Local RabbitMQ broker used by PingTower services.
+    bindings:
+      amqp:
+        vhost: /
+
+channels:
+  # ──────────────────────────────────────────────────────────────
+  # Work queues (single consumer, default exchange)
+  # ──────────────────────────────────────────────────────────────
+
+  emailQueue:
+    description: |
+      Work queue for outbound email notifications.
+      API publishes directly to the default exchange (routing key = `emailQueue`).
+      EmailSender is the sole consumer.
+    x-topology:
+      exchange:
+        name: ""
+        type: direct
+      routingKey: emailQueue
+      queues:
+        - emailQueue
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: ""
+          type: direct
+          durable: true
+          autoDelete: false
+        queue:
+          name: emailQueue
+          durable: true
+          autoDelete: false
+        bindingVersion: "0.2.0"
+    publish:
+      operationId: apiPublishEmailMessage
+      summary: API publishes an email message for asynchronous delivery.
+      tags:
+        - name: api
+      message:
+        $ref: "#/components/messages/EmailMessage"
+    subscribe:
+      operationId: emailServiceConsumeEmailMessage
+      summary: Email service consumes an email message and sends it via SMTP.
+      tags:
+        - name: email-service
+      message:
+        $ref: "#/components/messages/EmailMessage"
+
+  telegramQueue:
+    description: |
+      Work queue for outbound Telegram notifications.
+      Message-node publishes directly to the default exchange
+      (routing key = `telegramQueue`). tg-bot is the sole consumer.
+    x-topology:
+      exchange:
+        name: ""
+        type: direct
+      routingKey: telegramQueue
+      queues:
+        - telegramQueue
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: ""
+          type: direct
+          durable: true
+          autoDelete: false
+        queue:
+          name: telegramQueue
+          durable: true
+          autoDelete: false
+        bindingVersion: "0.2.0"
+    publish:
+      operationId: messageNodePublishTelegramNotification
+      summary: Message-node publishes a Telegram notification command.
+      tags:
+        - name: message-node
+      message:
+        $ref: "#/components/messages/TelegramNotificationMessage"
+    subscribe:
+      operationId: tgBotConsumeTelegramNotification
+      summary: tg-bot is the sole consumer of the queue.
+      tags:
+        - name: tg-bot
+      message:
+        $ref: "#/components/messages/TelegramNotificationMessage"
+
+  # ──────────────────────────────────────────────────────────────
+  # Pub/sub via topic exchange (each consumer has its own queue)
+  # ──────────────────────────────────────────────────────────────
+
+  server.target.added:
+    description: |
+      Event emitted when a monitoring target is created in Postgres.
+      API publishes to `serverEventsExchange` with routing key `server.target.added`.
+
+      Consumer queues:
+      - `q.ping-service.server-events`
+      - `q.state-elevator.server-events`
+    x-topology:
+      exchange:
+        name: serverEventsExchange
+        type: topic
+      routingKey: server.target.added
+      queues:
+        - q.ping-service.server-events
+        - q.state-elevator.server-events
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: serverEventsExchange
+          type: topic
+          durable: true
+          autoDelete: false
+        bindingVersion: "0.2.0"
+    x-consumer-queues:
+      - service: ping-service
+        queue: q.ping-service.server-events
+      - service: state-elevator
+        queue: q.state-elevator.server-events
+    publish:
+      operationId: apiPublishServerAdded
+      summary: API publishes a target-created event.
+      tags:
+        - name: api
+      message:
+        $ref: "#/components/messages/ServerAddedMessage"
+    subscribe:
+      operationId: servicesConsumeServerAdded
+      summary: Ping-service and state-elevator each consume the target-created event.
+      tags:
+        - name: ping-service
+        - name: state-elevator
+      message:
+        $ref: "#/components/messages/ServerAddedMessage"
+
+  server.target.updated:
+    description: |
+      Event emitted when target configuration or ping settings are updated.
+      API publishes to `serverEventsExchange` with routing key `server.target.updated`.
+
+      Consumer queues:
+      - `q.ping-service.server-events`
+      - `q.state-elevator.server-events`
+    x-topology:
+      exchange:
+        name: serverEventsExchange
+        type: topic
+      routingKey: server.target.updated
+      queues:
+        - q.ping-service.server-events
+        - q.state-elevator.server-events
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: serverEventsExchange
+          type: topic
+          durable: true
+          autoDelete: false
+        bindingVersion: "0.2.0"
+    x-consumer-queues:
+      - service: ping-service
+        queue: q.ping-service.server-events
+      - service: state-elevator
+        queue: q.state-elevator.server-events
+    publish:
+      operationId: apiPublishServerUpdated
+      summary: API publishes a target-updated event.
+      tags:
+        - name: api
+      message:
+        $ref: "#/components/messages/ServerEditedMessage"
+    subscribe:
+      operationId: servicesConsumeServerUpdated
+      summary: Ping-service and state-elevator each consume the target-updated event.
+      tags:
+        - name: ping-service
+        - name: state-elevator
+      message:
+        $ref: "#/components/messages/ServerEditedMessage"
+
+  server.target.deleted:
+    description: |
+      Event emitted when a target is soft-deleted in Postgres.
+      API publishes to `serverEventsExchange` with routing key `server.target.deleted`.
+
+      Consumer queues:
+      - `q.ping-service.server-events`
+      - `q.state-elevator.server-events`
+    x-topology:
+      exchange:
+        name: serverEventsExchange
+        type: topic
+      routingKey: server.target.deleted
+      queues:
+        - q.ping-service.server-events
+        - q.state-elevator.server-events
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: serverEventsExchange
+          type: topic
+          durable: true
+          autoDelete: false
+        bindingVersion: "0.2.0"
+    x-consumer-queues:
+      - service: ping-service
+        queue: q.ping-service.server-events
+      - service: state-elevator
+        queue: q.state-elevator.server-events
+    publish:
+      operationId: apiPublishServerDeleted
+      summary: API publishes a target-deleted event.
+      tags:
+        - name: api
+      message:
+        $ref: "#/components/messages/ServerDeletedMessage"
+    subscribe:
+      operationId: servicesConsumeServerDeleted
+      summary: Ping-service and state-elevator each consume the target-deleted event.
+      tags:
+        - name: ping-service
+        - name: state-elevator
+      message:
+        $ref: "#/components/messages/ServerDeletedMessage"
+
+  server.ping.recorded:
+    description: |
+      New ping sample produced by ping-service.
+      Published to `pingEventsExchange` with routing key `server.ping.recorded`.
+
+      Consumer queues:
+      - `q.metrics-writer.ping-events`
+      - `q.state-elevator.ping-events`
+    x-topology:
+      exchange:
+        name: pingEventsExchange
+        type: topic
+      routingKey: server.ping.recorded
+      queues:
+        - q.metrics-writer.ping-events
+        - q.state-elevator.ping-events
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: pingEventsExchange
+          type: topic
+          durable: true
+          autoDelete: false
+        bindingVersion: "0.2.0"
+    x-consumer-queues:
+      - service: metrics-writer
+        queue: q.metrics-writer.ping-events
+      - service: state-elevator
+        queue: q.state-elevator.ping-events
+    publish:
+      operationId: pingServicePublishPingRecorded
+      summary: Ping-service publishes a raw ping result.
+      tags:
+        - name: ping-service
+      message:
+        $ref: "#/components/messages/PingRecordedMessage"
+    subscribe:
+      operationId: servicesConsumePingRecorded
+      summary: Metrics-writer and state-elevator each consume ping results.
+      tags:
+        - name: metrics-writer
+        - name: state-elevator
+      message:
+        $ref: "#/components/messages/PingRecordedMessage"
+
+  server.status.changed:
+    description: |
+      Aggregated status transition for a server, emitted by state-elevator.
+      Published to `statusEventsExchange` with routing key `server.status.changed`.
+
+      Consumer queues:
+      - `q.api.status-events`
+      - `q.message-node.status-events`
+    x-topology:
+      exchange:
+        name: statusEventsExchange
+        type: topic
+      routingKey: server.status.changed
+      queues:
+        - q.api.status-events
+        - q.message-node.status-events
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: statusEventsExchange
+          type: topic
+          durable: true
+          autoDelete: false
+        bindingVersion: "0.2.0"
+    x-consumer-queues:
+      - service: api
+        queue: q.api.status-events
+      - service: message-node
+        queue: q.message-node.status-events
+    publish:
+      operationId: stateElevatorPublishServerStatusChanged
+      summary: State-elevator publishes a derived status transition.
+      tags:
+        - name: state-elevator
+      message:
+        $ref: "#/components/messages/ServerStatusChangedMessage"
+    subscribe:
+      operationId: servicesConsumeServerStatusChanged
+      summary: API and message-node each consume the status transition.
+      tags:
+        - name: api
+        - name: message-node
+      message:
+        $ref: "#/components/messages/ServerStatusChangedMessage"
+
+components:
+  messages:
+    EmailMessage:
+      name: EmailMessage
+      title: Outbound email message
+      summary: Email payload sent from API to email-service.
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/EmailMessagePayload"
+
+    ServerAddedMessage:
+      name: ServerAddedMessage
+      title: Server added event
+      summary: Server target creation event.
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/ServerEventPayload"
+
+    ServerEditedMessage:
+      name: ServerEditedMessage
+      title: Server updated event
+      summary: Server target update event.
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/ServerEventPayload"
+
+    ServerDeletedMessage:
+      name: ServerDeletedMessage
+      title: Server deleted event
+      summary: Server target deletion event.
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/ServerEventPayload"
+
+    PingRecordedMessage:
+      name: PingRecordedMessage
+      title: New ping sample
+      summary: Raw ping result emitted by ping-service.
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/PingRecordedPayload"
+
+    ServerStatusChangedMessage:
+      name: ServerStatusChangedMessage
+      title: Aggregated server status changed
+      summary: Status transition emitted by state-elevator.
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/ServerStatusChangedPayload"
+
+    TelegramNotificationMessage:
+      name: TelegramNotificationMessage
+      title: Telegram notification command
+      summary: Command sent to tg-bot by message-node.
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/TelegramNotificationPayload"
+
+  schemas:
+    ServerEventPayload:
+      type: object
+      required:
+        - server
+        - pingSettings
+      properties:
+        server:
+          $ref: "#/components/schemas/ServerEventServer"
+        pingSettings:
+          $ref: "#/components/schemas/ServerEventPingSettings"
+
+    ServerEventServer:
+      type: object
+      required:
+        - id
+        - name
+        - host
+        - userId
+        - isActive
+        - protocol
+        - status
+        - isDeleted
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 255
+        host:
+          type: string
+          maxLength: 255
+        userId:
+          type: string
+        port:
+          type: integer
+          nullable: true
+        isActive:
+          type: boolean
+        protocol:
+          $ref: "#/components/schemas/Protocol"
+        status:
+          $ref: "#/components/schemas/ServerStatus"
+        isDeleted:
+          type: boolean
+
+    ServerEventPingSettings:
+      type: object
+      required:
+        - id
+        - serverId
+        - isDeleted
+      properties:
+        id:
+          type: string
+          format: uuid
+        serverId:
+          type: string
+          format: uuid
+        intervalSec:
+          type: integer
+          nullable: true
+          default: 60
+        latencyThresholdMs:
+          type: integer
+          nullable: true
+          default: 400
+        retries:
+          type: integer
+          nullable: true
+          default: 0
+        failureThreshold:
+          type: integer
+          nullable: true
+          default: 1
+        isDeleted:
+          type: boolean
+
+    EmailMessagePayload:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+        subject:
+          type: string
+          nullable: true
+        htmlBody:
+          type: string
+          nullable: true
+
+    PingRecordedPayload:
+      type: object
+      required:
+        - id
+        - serverId
+        - protocol
+        - timestamp
+        - isSuccess
+      properties:
+        id:
+          type: string
+          format: uuid
+        serverId:
+          type: string
+          format: uuid
+        protocol:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        isSuccess:
+          type: boolean
+        latencyMs:
+          type: number
+          format: double
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        statusCode:
+          type: integer
+          nullable: true
+        certExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        tlsVersion:
+          type: string
+          nullable: true
+        dnsLookupMs:
+          type: number
+          format: double
+          nullable: true
+        sentBytes:
+          type: integer
+          format: int64
+          nullable: true
+        receivedBytes:
+          type: integer
+          format: int64
+          nullable: true
+        packetLossPercent:
+          type: number
+          format: double
+          nullable: true
+        rttMinMs:
+          type: number
+          format: double
+          nullable: true
+        rttMaxMs:
+          type: number
+          format: double
+          nullable: true
+        ttl:
+          type: integer
+          nullable: true
+
+    ServerStatusChangedPayload:
+      type: object
+      required:
+        - server_id
+        - status
+      properties:
+        server_id:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/ServerStatus"
+
+    TelegramNotificationPayload:
+      type: object
+      required:
+        - userId
+        - telegramUserId
+        - serverId
+        - title
+        - message
+      properties:
+        userId:
+          type: string
+        telegramUserId:
+          type: integer
+          format: int64
+        serverId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        message:
+          type: string
+        severity:
+          type: string
+          enum:
+            - info
+            - warning
+            - critical
+        metadata:
+          type: object
+          additionalProperties: true
+
+    Protocol:
+      type: string
+      enum:
+        - ICMP
+        - TCP
+        - HTTP
+        - HTTPS
+
+    ServerStatus:
+      type: string
+      enum:
+        - UP
+        - DOWN
+        - UNKNOWN

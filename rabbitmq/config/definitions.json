@@ -1,0 +1,166 @@
+{
+  "rabbit_version": "3.12",
+  "rabbitmq_version": "3.12",
+  "users": [
+    {
+      "name": "__RABBITMQ_ADMIN_USER__",
+      "password_hash": "__RABBITMQ_ADMIN_HASH__",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": ["administrator"]
+    }
+  ],
+  "permissions": [
+    {
+      "user": "__RABBITMQ_ADMIN_USER__",
+      "vhost": "/",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ],
+  "vhosts": [
+    {
+      "name": "/"
+    }
+  ],
+  "parameters": [],
+  "global_parameters": [],
+  "policies": [],
+  "exchanges": [
+    {
+      "name": "serverEventsExchange",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "pingEventsExchange",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "statusEventsExchange",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "queues": [
+    {
+      "name": "emailQueue",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "telegramQueue",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "q.ping-service.server-events",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "q.state-elevator.server-events",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "q.metrics-writer.ping-events",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "q.state-elevator.ping-events",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "q.api.status-events",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "q.message-node.status-events",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    }
+  ],
+  "bindings": [
+    {
+      "source": "serverEventsExchange",
+      "vhost": "/",
+      "destination": "q.ping-service.server-events",
+      "destination_type": "queue",
+      "routing_key": "server.target.*",
+      "arguments": {}
+    },
+    {
+      "source": "serverEventsExchange",
+      "vhost": "/",
+      "destination": "q.state-elevator.server-events",
+      "destination_type": "queue",
+      "routing_key": "server.target.*",
+      "arguments": {}
+    },
+    {
+      "source": "pingEventsExchange",
+      "vhost": "/",
+      "destination": "q.metrics-writer.ping-events",
+      "destination_type": "queue",
+      "routing_key": "server.ping.recorded",
+      "arguments": {}
+    },
+    {
+      "source": "pingEventsExchange",
+      "vhost": "/",
+      "destination": "q.state-elevator.ping-events",
+      "destination_type": "queue",
+      "routing_key": "server.ping.recorded",
+      "arguments": {}
+    },
+    {
+      "source": "statusEventsExchange",
+      "vhost": "/",
+      "destination": "q.api.status-events",
+      "destination_type": "queue",
+      "routing_key": "server.status.changed",
+      "arguments": {}
+    },
+    {
+      "source": "statusEventsExchange",
+      "vhost": "/",
+      "destination": "q.message-node.status-events",
+      "destination_type": "queue",
+      "routing_key": "server.status.changed",
+      "arguments": {}
+    }
+  ]
+}

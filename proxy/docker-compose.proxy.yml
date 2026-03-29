@@ -1,0 +1,28 @@
+services:
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--certificatesresolvers.pingtowerresolver.acme.tlschallenge=true"
+      - "--certificatesresolvers.pingtowerresolver.acme.email=${TRAEFIK_ACME_EMAIL}"
+      - "--certificatesresolvers.pingtowerresolver.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "${TRAEFIK_HTTP_PORT}:80"
+      - "${TRAEFIK_HTTPS_PORT}:443"
+    volumes:
+      - "./letsencrypt:/letsencrypt"
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    networks:
+      - pingtower_network
+
+
+networks:
+  pingtower_network:
+    name: pingtower_network
+    driver: bridge
