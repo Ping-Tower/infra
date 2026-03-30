@@ -469,6 +469,10 @@ components:
         host:
           type: string
           maxLength: 255
+        query:
+          type: string
+          maxLength: 255
+          nullable: true
         userId:
           type: string
         port:
