@@ -107,7 +107,7 @@ channels:
   telegramQueue:
     description: |
       Work queue for outbound Telegram notifications.
-      Message-node publishes directly to the default exchange
+      API and message-node publish directly to the default exchange
       (routing key = `telegramQueue`). tg-bot is the sole consumer.
     x-topology:
       exchange:
@@ -130,9 +130,10 @@ channels:
           autoDelete: false
         bindingVersion: "0.2.0"
     publish:
-      operationId: messageNodePublishTelegramNotification
-      summary: Message-node publishes a Telegram notification command.
+      operationId: notificationProducerPublishTelegramNotification
+      summary: API or message-node publishes a Telegram notification command.
       tags:
+        - name: api
         - name: message-node
       message:
         $ref: "#/components/messages/TelegramNotificationMessage"
@@ -383,7 +384,7 @@ components:
     EmailMessage:
       name: EmailMessage
       title: Outbound email message
-      summary: Email payload sent from API to email-service.
+      summary: Email template command sent from API to email-service.
       contentType: application/json
       payload:
         $ref: "#/components/schemas/EmailMessagePayload"
@@ -431,7 +432,7 @@ components:
     TelegramNotificationMessage:
       name: TelegramNotificationMessage
       title: Telegram notification command
-      summary: Command sent to tg-bot by message-node.
+      summary: Command sent to tg-bot by API or message-node.
       contentType: application/json
       payload:
         $ref: "#/components/schemas/TelegramNotificationPayload"
@@ -523,16 +524,18 @@ components:
       type: object
       required:
         - email
+        - templateId
       properties:
         email:
           type: string
           format: email
-        subject:
+        templateId:
           type: string
-          nullable: true
-        htmlBody:
-          type: string
-          nullable: true
+        data:
+          type: object
+          additionalProperties:
+            type: string
+            nullable: true
 
     PingRecordedPayload:
       type: object
@@ -616,33 +619,33 @@ components:
     TelegramNotificationPayload:
       type: object
       required:
-        - userId
-        - telegramUserId
-        - serverId
-        - title
-        - message
+        - chatId
+        - text
       properties:
-        userId:
-          type: string
-        telegramUserId:
+        chatId:
           type: integer
           format: int64
-        serverId:
+        text:
           type: string
-          format: uuid
-        title:
+        inlineButtons:
+          type: array
+          items:
+            type: array
+            items:
+              $ref: "#/components/schemas/TelegramInlineButtonPayload"
+
+    TelegramInlineButtonPayload:
+      type: object
+      required:
+        - text
+      properties:
+        text:
           type: string
-        message:
+        url:
           type: string
-        severity:
+          format: uri
+        callbackData:
           type: string
-          enum:
-            - info
-            - warning
-            - critical
-        metadata:
-          type: object
-          additionalProperties: true
 
     Protocol:
       type: string

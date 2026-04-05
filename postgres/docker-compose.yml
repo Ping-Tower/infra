@@ -25,5 +25,5 @@ volumes:
 
 networks:
   pingtower_network:
+    external: true
     name: pingtower_network
-    driver: bridge
