@@ -37,11 +37,11 @@ tags:
   - name: api
     description: ASP.NET Core API service
   - name: ping-service
-    description: Go service that performs health checks
+    description: Go service that performs network health checks and publishes raw probe results
   - name: metrics-writer
     description: Service that writes ping samples to ClickHouse
   - name: state-elevator
-    description: Service that aggregates state and stores hot state in Redis
+    description: Service that stores server ping config in Redis, evaluates raw probe results against thresholds, and publishes status transitions
   - name: message-node
     description: Notification orchestrator (Python)
   - name: email-service
@@ -187,7 +187,7 @@ channels:
         $ref: "#/components/messages/ServerAddedMessage"
     subscribe:
       operationId: servicesConsumeServerAdded
-      summary: Ping-service and state-elevator each consume the target-created event.
+      summary: Ping-service schedules probes; state-elevator stores target config in Redis.
       tags:
         - name: ping-service
         - name: state-elevator
@@ -233,7 +233,7 @@ channels:
         $ref: "#/components/messages/ServerEditedMessage"
     subscribe:
       operationId: servicesConsumeServerUpdated
-      summary: Ping-service and state-elevator each consume the target-updated event.
+      summary: Ping-service refreshes probes; state-elevator refreshes target config in Redis.
       tags:
         - name: ping-service
         - name: state-elevator
@@ -279,7 +279,7 @@ channels:
         $ref: "#/components/messages/ServerDeletedMessage"
     subscribe:
       operationId: servicesConsumeServerDeleted
-      summary: Ping-service and state-elevator each consume the target-deleted event.
+      summary: Ping-service stops probes; state-elevator marks config deleted and clears hot state.
       tags:
         - name: ping-service
         - name: state-elevator
@@ -318,14 +318,14 @@ channels:
         queue: q.state-elevator.ping-events
     publish:
       operationId: pingServicePublishPingRecorded
-      summary: Ping-service publishes a raw ping result.
+      summary: Ping-service publishes a raw ping result without applying latency thresholds.
       tags:
         - name: ping-service
       message:
         $ref: "#/components/messages/PingRecordedMessage"
     subscribe:
       operationId: servicesConsumePingRecorded
-      summary: Metrics-writer and state-elevator each consume ping results.
+      summary: Metrics-writer stores raw samples; state-elevator derives hot server state using success, latency threshold, and failure threshold.
       tags:
         - name: metrics-writer
         - name: state-elevator
@@ -334,7 +334,7 @@ channels:
 
   server.status.changed:
     description: |
-      Aggregated status transition for a server, emitted by state-elevator.
+      Aggregated status transition for a server, emitted by state-elevator after evaluating ping success against Redis-backed config and failure thresholds.
       Published to `statusEventsExchange` with routing key `server.status.changed`.
 
       Consumer queues:
