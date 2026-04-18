@@ -21,4 +21,4 @@ CREATE TABLE IF NOT EXISTS pingtower_analytics.server_pings
 ENGINE = MergeTree
 PARTITION BY toYYYYMMDD(timestamp)
 ORDER BY (server_id, timestamp)
-TTL timestamp + INTERVAL 30 DAY;
+TTL toDateTime(timestamp) + INTERVAL 30 DAY;
