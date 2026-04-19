@@ -104,13 +104,6 @@
       "durable": true,
       "auto_delete": false,
       "arguments": {}
-    },
-    {
-      "name": "q.message-node.status-events",
-      "vhost": "/",
-      "durable": true,
-      "auto_delete": false,
-      "arguments": {}
     }
   ],
   "bindings": [
@@ -150,14 +143,6 @@
       "source": "statusEventsExchange",
       "vhost": "/",
       "destination": "q.api.status-events",
-      "destination_type": "queue",
-      "routing_key": "server.status.changed",
-      "arguments": {}
-    },
-    {
-      "source": "statusEventsExchange",
-      "vhost": "/",
-      "destination": "q.message-node.status-events",
       "destination_type": "queue",
       "routing_key": "server.status.changed",
       "arguments": {}
