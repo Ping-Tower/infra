@@ -1,0 +1,9 @@
+# Environment / local config
+.env
+.env.*
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
