@@ -1,25 +1,8 @@
-<div align="center">
+# PingTower Infra
 
-<a href="https://gitlab.com/pingtower"><img src="https://gitlab.com/uploads/-/system/group/avatar/121984904/logo-mark-avatar.png" width="72" alt="PingTower"></a>
+Storages, message broker, reverse proxy and logging — plus one Makefile to run the whole stack.
 
-# 🏗️ infra
-
-### Storages, message broker, reverse proxy and logging — plus one Makefile to run the whole stack
-
-[![pipeline](https://gitlab.com/pingtower/infra/badges/main/pipeline.svg)](https://gitlab.com/pingtower/infra/-/pipelines)
-![Docker](https://img.shields.io/badge/Docker_Compose-2496ED?logo=docker&logoColor=white)
-![Traefik](https://img.shields.io/badge/Traefik-24A1C1?logo=traefikproxy&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)
-![ClickHouse](https://img.shields.io/badge/ClickHouse-FFCC01?logo=clickhouse&logoColor=black)
-![RabbitMQ](https://img.shields.io/badge/RabbitMQ-FF6600?logo=rabbitmq&logoColor=white)
-![Redis](https://img.shields.io/badge/Redis-DC382D?logo=redis&logoColor=white)
-![Grafana](https://img.shields.io/badge/Grafana_·_Loki-F46800?logo=grafana&logoColor=white)
-
-<sub>Part of <a href="https://gitlab.com/pingtower"><b>PingTower</b></a> — real-time server availability monitoring</sub>
-
-</div>
-
----
+Stack: Docker Compose, Traefik, PostgreSQL, ClickHouse, RabbitMQ, Redis, Grafana, Loki.
 
 ## Role in the system
 
