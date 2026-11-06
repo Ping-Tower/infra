@@ -1,38 +1,68 @@
 stages:
+  - validate
   - deploy
 
-.deploy_template:
-  stage: deploy
-  image: alpine:3.20
-  before_script:
-    - apk add --no-cache openssh-client rsync
-    - eval $(ssh-agent -s)
-    - echo "$SSH_PRIVATE_KEY" | base64 -d | ssh-add -
-    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
-    - echo -e "Host *\n\tStrictHostKeyChecking no\n\tPort $TARGET_PORT" > ~/.ssh/config
-  script:
-    - cp $TARGET_ENV_FILE .env
-    - rsync -avz --delete --exclude='.git' . $TARGET_USER@$TARGET_HOST:$TARGET_INFRA_PATH/
-    - ssh $TARGET_USER@$TARGET_HOST "
-        cd $TARGET_INFRA_PATH &&
-        docker network create pingtower_network || true &&
-        docker compose -f postgres/docker-compose.yml up -d &&
-        docker compose -f redis/docker-compose.yml up -d &&
-        docker compose -f clickhouse/docker-compose.yml up -d &&
-        docker compose -f rabbitmq/docker-compose.broker.yml up -d &&
-        docker compose -f proxy/docker-compose.proxy.yml up -d &&
-        docker compose -f logging/docker-compose.logging.yml up -d
-      "
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
-deploy_prod:
-  extends: .deploy_template
-  variables:
-    TARGET_PORT: $SSH_PORT_PROD
-    TARGET_HOST: $SSH_HOST_PROD
-    TARGET_USER: $SSH_USER_PROD
-    TARGET_ENV_FILE: $PROD_ENV_FILE
-    TARGET_INFRA_PATH: $INFRA_PATH_PROD
+variables:
+  KUBE_CONTEXT: pingtower/infra:pingtower
+
+default:
+  image:
+    name: alpine/kubectl:1.37.1
+    entrypoint: [""]
+  tags:
+    - saas-linux-small-amd64
+  before_script:
+    - kubectl config use-context "$KUBE_CONTEXT"
+  timeout: 10m
+
+validate:
+  stage: validate
+  interruptible: true
+  script:
+    # Namespace применяем по-настоящему (идемпотентно): server dry-run
+    # остальных манифестов требует уже существующего namespace.
+    - kubectl apply -f k8s/namespace.yaml
+    - kubectl apply --dry-run=server
+        -f k8s/secrets/
+        -f k8s/configmap.yaml
+        -f k8s/postgres/
+        -f k8s/redis/
+        -f k8s/rabbitmq/
+        -f k8s/clickhouse/
+        -f k8s/networkpolicy.yaml
+
+deploy:
+  stage: deploy
+  resource_group: pingtower-production
   environment:
     name: production
-  only:
-    - main
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true"'
+      when: manual
+  allow_failure: false
+  manual_confirmation: "Развернуть инфраструктуру PingTower в production?"
+  script:
+    - kubectl apply -f k8s/namespace.yaml
+    - kubectl apply -f k8s/secrets/
+    - kubectl -n pingtower wait --for=condition=Ready
+        externalsecret/postgres-admin
+        externalsecret/postgres-app
+        externalsecret/redis
+        externalsecret/rabbitmq
+        externalsecret/clickhouse
+        externalsecret/gitlab-registry --timeout=120s
+    - kubectl -n pingtower get secret postgres-admin postgres-app redis rabbitmq clickhouse gitlab-registry -o name
+    # Общий ConfigMap до statefulset'ов: init-контейнер rabbitmq читает его.
+    - kubectl apply -f k8s/configmap.yaml
+    - kubectl apply -f k8s/postgres/ -f k8s/redis/ -f k8s/rabbitmq/ -f k8s/clickhouse/
+    - kubectl apply -f k8s/networkpolicy.yaml
+    - kubectl -n pingtower rollout status statefulset/postgres --timeout=300s
+    - kubectl -n pingtower rollout status statefulset/redis --timeout=300s
+    - kubectl -n pingtower rollout status statefulset/rabbitmq --timeout=300s
+    - kubectl -n pingtower rollout status statefulset/clickhouse --timeout=600s
+    - kubectl -n pingtower get pods,pvc,svc

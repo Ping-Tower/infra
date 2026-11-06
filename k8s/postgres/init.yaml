@@ -1,0 +1,26 @@
+# Исполняется ТОЛЬКО на пустом каталоге данных (docker-entrypoint-initdb.d).
+# Роль прикладного пользователя: схему создаёт EF Core миграция api.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  namespace: pingtower
+data:
+  10-app-user.sh: |
+    #!/bin/sh
+    set -eu
+    : "${POSTGRES_APP_PASSWORD:?POSTGRES_APP_PASSWORD must not be empty}"
+    # psql 14 не знает \getenv (он появился в PostgreSQL 15);
+    # переменные передаём флагами -v, :'var'/:"var" работают и в 14.
+    psql -X --set ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
+      -v app_password="$POSTGRES_APP_PASSWORD" \
+      -v db_name="$POSTGRES_DB" <<'SQL'
+    BEGIN;
+    CREATE ROLE pingtower_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION
+      PASSWORD :'app_password';
+    ALTER DATABASE :"db_name" OWNER TO pingtower_app;
+    REVOKE ALL ON DATABASE :"db_name" FROM PUBLIC;
+    REVOKE ALL ON SCHEMA public FROM PUBLIC;
+    GRANT USAGE, CREATE ON SCHEMA public TO pingtower_app;
+    COMMIT;
+    SQL

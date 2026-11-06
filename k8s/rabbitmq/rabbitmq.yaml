@@ -1,0 +1,170 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  namespace: pingtower
+spec:
+  clusterIP: None
+  selector:
+    app: rabbitmq
+  ports:
+    - name: amqp
+      port: 5672
+      targetPort: amqp
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rabbitmq
+  namespace: pingtower
+spec:
+  serviceName: rabbitmq
+  replicas: 1
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 120
+      securityContext:
+        fsGroup: 10001
+        # Сохраняем owner-only права Erlang cookie при пере-монтировании PVC.
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        # Вшивает пользователя pingtower и его права в definitions.json:
+        # в исходнике секции users/permissions пустые по назначению.
+        - name: definitions
+          image: python:3.14.7-alpine3.23
+          command:
+            - python
+            - -c
+            - |
+              import base64, hashlib, json, os
+              from pathlib import Path
+              config = json.loads(Path('/config/definitions.json').read_text())
+              password = Path('/credentials/password').read_bytes()
+              salt = os.urandom(4)
+              password_hash = base64.b64encode(salt + hashlib.sha256(salt + password).digest()).decode()
+              user = os.environ['RABBITMQ_USER']
+              config['users'] = [{'name': user, 'password_hash': password_hash, 'hashing_algorithm': 'rabbit_password_hashing_sha256', 'tags': ''}]
+              config['permissions'] = [{'user': user, 'vhost': '/', 'configure': '.*', 'write': '.*', 'read': '.*'}]
+              Path('/definitions/definitions.json').write_text(json.dumps(config))
+          env:
+            - name: RABBITMQ_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: pingtower-infra
+                  key: RABBITMQ_USER
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            runAsUser: 10001
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: credentials
+              mountPath: /credentials
+              readOnly: true
+            - name: definitions
+              mountPath: /definitions
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:4.3.5-alpine
+          ports:
+            - name: amqp
+              containerPort: 5672
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: RABBITMQ_NODENAME
+              value: rabbit@$(POD_NAME)
+            - name: RABBITMQ_MNESIA_BASE
+              value: /var/lib/rabbitmq/mnesia
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - CHOWN
+                - DAC_OVERRIDE
+                - FOWNER
+                - SETGID
+                - SETUID
+          startupProbe:
+            exec:
+              command: [rabbitmq-diagnostics, -q, ping]
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            exec:
+              command: [rabbitmq-diagnostics, -q, check_running]
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command: [rabbitmq-diagnostics, -q, ping]
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/rabbitmq
+            - name: config
+              mountPath: /etc/rabbitmq/rabbitmq.conf
+              subPath: rabbitmq.conf
+              readOnly: true
+            - name: definitions
+              mountPath: /etc/rabbitmq/definitions
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: rabbitmq-config
+        - name: credentials
+          secret:
+            secretName: rabbitmq
+            defaultMode: 288
+        - name: definitions
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Mi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 5Gi

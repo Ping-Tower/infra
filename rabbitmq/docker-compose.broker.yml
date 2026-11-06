@@ -1,6 +1,8 @@
 services:
   rabbitmq:
-    image: rabbitmq:3.12-management
+    # Версия сервера совпадает с k8s (4.3.5-alpine); -management нужен только
+    # для локального UI и management.load_definitions.
+    image: rabbitmq:4.3.5-management-alpine
     container_name: broker
     restart: always
     environment:

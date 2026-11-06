@@ -1,0 +1,17 @@
+replicas: 1
+rbac:
+  create: false
+serviceAccount:
+  create: true
+  name: gitlab-agent-pingtower
+config:
+  kasAddress: wss://kas.gitlab.com
+  secretName: gitlab-agent-token
+  operational_container_scanning:
+    enabled: false
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 256Mi

@@ -1,0 +1,39 @@
+# Общие параметры подключения приложений к инфраструктуре.
+# Хосты — имена Service внутри namespace: postgres/redis/rabbitmq/clickhouse.
+# Пароли — через ESO/ExternalSecret (k8s/secrets/external-secrets.yaml).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pingtower-infra
+data:
+  POSTGRES_DB: pingtower_db
+  POSTGRES_USER: pingtower_app
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: '5432'
+  REDIS_HOST: redis
+  REDIS_PORT: '6379'
+  RABBITMQ_HOST: rabbitmq
+  RABBITMQ_PORT: '5672'
+  RABBITMQ_USER: pingtower
+  RABBITMQ_VHOST: /
+  RABBITMQ_SERVER_EVENTS_QUEUE: q.ping-service.server-events
+  # Для ping-service: Go cleanenv собирает имя как RABBITMQ_ + env-тег.
+  RABBITMQ_PING_EVENTS_EXCHANGE: pingEventsExchange
+  RABBITMQ_PING_RECORDED_ROUTING_KEY: server.ping.recorded
+  RABBITMQ_RECONNECT_DELAY_MS: '5000'
+  RABBITMQ_MAIN_QUEUE: emailQueue
+  RABBITMQ_TELEGRAM_QUEUE: telegramQueue
+  RABBITMQ_SERVER_EVENTS_EXCHANGE: serverEventsExchange
+  RABBITMQ_SERVER_ADDED_ROUTING_KEY: server.target.added
+  RABBITMQ_SERVER_UPDATED_ROUTING_KEY: server.target.updated
+  RABBITMQ_SERVER_DELETED_ROUTING_KEY: server.target.deleted
+  RABBITMQ_SERVER_STATUS_CHANGED_QUEUE: q.api.status-events
+  STATE_ELEVATOR_SERVER_EVENTS_QUEUE: q.state-elevator.server-events
+  STATE_ELEVATOR_PING_EVENTS_QUEUE: q.state-elevator.ping-events
+  STATE_ELEVATOR_STATUS_EVENTS_EXCHANGE: statusEventsExchange
+  STATE_ELEVATOR_STATUS_CHANGED_ROUTING_KEY: server.status.changed
+  METRICS_WRITER_RABBITMQ_MAIN_QUEUE: q.metrics-writer.ping-events
+  CLICKHOUSE_HOST: clickhouse
+  CLICKHOUSE_PORT: '8123'
+  CLICKHOUSE_USER: pingtower_app
+  CLICKHOUSE_DB: pingtower_analytics

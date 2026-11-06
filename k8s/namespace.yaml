@@ -1,0 +1,6 @@
+# Namespace создаёт администратор кластера вручную
+# (kubectl apply -f k8s/namespace.yaml); deploy-job прав только ресурсы внутри.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pingtower
