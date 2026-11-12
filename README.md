@@ -4,6 +4,8 @@ Storages, message broker, reverse proxy and logging — plus one Makefile to run
 
 Stack: Docker Compose, Traefik, PostgreSQL, ClickHouse, RabbitMQ, Redis, Grafana, Loki.
 
+Kubernetes stand: [deployment and required Variables](DEPLOYMENT.md).
+
 ## Role in the system
 
 Every PingTower service is its own repository with its own `docker-compose.yml`. This repository holds
