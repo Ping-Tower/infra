@@ -5,6 +5,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: pingtower-infra
+  namespace: pingtower
 data:
   POSTGRES_DB: pingtower_db
   POSTGRES_USER: pingtower_app

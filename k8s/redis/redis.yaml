@@ -71,16 +71,16 @@ spec:
               command: [sh, -c, 'redis-cli -a "$REDISCLI_AUTH" ping | grep -qx PONG']
             periodSeconds: 10
             timeoutSeconds: 3
-      volumes:
-        - name: data
-          mountPath: /data
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
               drop: [ALL]
               # entrypoint переключает процесс на пользователя redis
-              # и ч.mainнит /data — нужны setuid/setgid/chown.
+              # и chown'ит /data — нужны setuid/setgid/chown.
               add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+          volumeMounts:
+            - name: data
+              mountPath: /data
   volumeClaimTemplates:
     - metadata:
         name: data

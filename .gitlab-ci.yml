@@ -24,9 +24,7 @@ validate:
   stage: validate
   interruptible: true
   script:
-    # Namespace применяем по-настоящему (идемпотентно): server dry-run
-    # остальных манифестов требует уже существующего namespace.
-    - kubectl apply -f k8s/namespace.yaml
+    # Namespace и RBAC заранее создаёт администратор: у агента нет cluster-wide прав.
     - kubectl apply --dry-run=server
         -f k8s/secrets/
         -f k8s/configmap.yaml
@@ -47,7 +45,6 @@ deploy:
   allow_failure: false
   manual_confirmation: "Развернуть инфраструктуру PingTower в production?"
   script:
-    - kubectl apply -f k8s/namespace.yaml
     - kubectl apply -f k8s/secrets/
     - kubectl -n pingtower wait --for=condition=Ready
         externalsecret/postgres-admin
