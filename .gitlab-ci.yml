@@ -63,3 +63,33 @@ deploy:
     - kubectl -n pingtower rollout status statefulset/rabbitmq --timeout=300s
     - kubectl -n pingtower rollout status statefulset/clickhouse --timeout=600s
     - kubectl -n pingtower get pods,pvc,svc
+
+# Reload environment-backed configuration after External Secrets synchronizes Variables.
+refresh_api_config:
+  stage: deploy
+  needs: []
+  resource_group: pingtower-production
+  environment:
+    name: production
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true"'
+      when: manual
+  allow_failure: true
+  manual_confirmation: "Обновить секреты и перезапустить API без смены образа?"
+  script:
+    - |
+      previous=$(kubectl -n pingtower get externalsecret api -o jsonpath='{.status.refreshTime}')
+      kubectl -n pingtower annotate externalsecret api force-sync="$(date +%s)" --overwrite
+      refreshed=false
+      for attempt in $(seq 1 24); do
+        current=$(kubectl -n pingtower get externalsecret api -o jsonpath='{.status.refreshTime}')
+        if [ -n "$current" ] && [ "$current" != "$previous" ]; then
+          refreshed=true
+          break
+        fi
+        sleep 5
+      done
+      test "$refreshed" = true
+    - kubectl -n pingtower wait --for=condition=Ready externalsecret/api --timeout=120s
+    - kubectl -n pingtower rollout restart deployment/api
+    - kubectl -n pingtower rollout status deployment/api --timeout=600s
