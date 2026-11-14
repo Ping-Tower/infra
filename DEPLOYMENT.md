@@ -27,12 +27,15 @@ GitLab → соответствующий проект → Settings → CI/CD �
 | `pingtower/tg-bot` | `TG_BOT_BOT_TOKEN` | Тот же токен бота |
 | `pingtower/tg-bot` | `TG_BOT_WEBHOOK_SECRET` | Случайная строка из букв, цифр, `_`, `-` |
 | `pingtower/frontend` | `VITE_TELEGRAM_BOT_USERNAME` | Username бота без `@`, публичный |
+| `pingtower/frontend` | `VITE_TELEGRAM_BOT_ID` | Числовой ID того же бота, публичный; не токен |
 | `pingtower/email-service` | `EMAIL_SERVICE_SMTP_HOST` | SMTP-сервер |
 | `pingtower/email-service` | `EMAIL_SERVICE_SMTP_PORT` | SMTP-порт |
 | `pingtower/email-service` | `EMAIL_SERVICE_SMTP_USERNAME` | SMTP-логин |
 | `pingtower/email-service` | `EMAIL_SERVICE_SMTP_PASSWORD` | SMTP-пароль |
 | `pingtower/email-service` | `EMAIL_SERVICE_SMTP_FROM_ADDRESS` | Адрес отправителя |
 | `pingtower/email-service` | `EMAIL_SERVICE_SMTP_FROM_NAME` | Имя отправителя |
+| `pingtower/email-service` | `EMAIL_SERVICE_SMTP_SECURITY` | `starttls`, `ssl` или `tls`, согласно настройкам SMTP |
+| `pingtower/email-service` | `EMAIL_SERVICE_SMTP_TIMEOUT_SECONDS` | Таймаут SMTP в секундах, например `30` |
 
 Короткие и публичные значения могут не подходить под ограничения Masked;
 их можно оставить обычными Variables. В BotFather разрешить домен `pingtower.tech`.
@@ -48,7 +51,7 @@ kubectl -n pingtower rollout status deployment/api --timeout=600s
 ```
 
 Для `tg-bot` и `email-service` запустить manual `deploy` в их успешных pipelines.
-После добавления username бота пересобрать и развернуть frontend: `VITE_*`
+После изменения username или числового ID бота пересобрать и развернуть frontend: `VITE_*`
 встраиваются в JavaScript при сборке.
 До настройки SMTP регистрация с подтверждением почты и восстановление пароля
 не завершатся; это не проверяется готовностью Pod API.
