@@ -36,7 +36,7 @@ deployment waits for image scanning even when it uses `needs`. Publishing an
 image to the registry does not deploy it. Existing manual production confirmation,
 GitLab Agent contexts, migrations, environment settings and rollout commands are
 preserved. Nuclei runs only after the corresponding production deploy; it uses a
-5 requests/second limit and does not use external interaction callbacks.
+30 requests/second limit and does not use external interaction callbacks.
 Scheduled infra backups do not wait for security scans.
 
 ## Reports and maintenance
@@ -62,3 +62,9 @@ names, an ellipsis private-key placeholder and 16-digit research cache hashes in
 specified files. They retain the default rules and do not exclude whole test or
 research directories. Semgrep parser diagnostics are retained in its reports;
 native language builds and tests remain part of verification.
+
+Python production images now use patched Alpine runtimes, separate dependency-build
+stages and numeric non-root users. UV and build toolchains stay in the builder.
+Runtime images are scanned without ignoring unfixed vulnerabilities. The Nuclei
+concurrency is five; the unchanged template set runs at 30 requests/second so it
+fits the scan timeout.
